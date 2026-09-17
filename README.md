@@ -6,8 +6,7 @@
 > every step are **bitwise identical** across all four strategies.
 
 **Notebook:** [`zero_sim_demo.ipynb`](zero_sim_demo.ipynb) (executed, with all outputs and plots) ·
-**Library:** [`zero_sim/`](zero_sim) · **Tests:** [`tests/`](tests) (16 tests encode the claims below) ·
-**Guide followed:** *ERA V5 – Distributed Training, GPU Memory & ZeRO* (Principal-Engineer summary)
+**Library:** [`zero_sim/`](zero_sim) · **Tests:** [`tests/`](tests) (16 tests encode the claims below)
 
 ```bash
 pip install -r requirements.txt
@@ -55,9 +54,9 @@ Design choices that matter:
   2 (weights) + 2 (grads) + 4 (fp32 master) + 4 (Adam m) + 4 (Adam v).
 
 A lesson I did not plan to learn: my first run was ~50× too slow because 32 Python threads each called a
-multithreaded BLAS on a 4-core box. Pinning BLAS to one thread per virtual GPU fixed it. The guide's line about
-"stragglers, thermal throttling, network congestion and rank imbalance as real production failure modes" applies
-to host-side oversubscription too.
+multithreaded BLAS on a 4-core box. Pinning BLAS to one thread per virtual GPU fixed it. The production lesson —
+stragglers, thermal throttling, network congestion and rank imbalance are real failure modes — applies to
+host-side oversubscription too.
 
 ## 2. The four strategies, as I now understand them
 
@@ -80,7 +79,7 @@ for the owned shard. ZeRO-2 notices the reduce-scatter can be issued the moment 
 the full gradient buffer never has to exist. ZeRO-3 notices that if parameters are re-gathered before every use,
 they don't have to persist either — the price is one extra all-gather per step.
 
-The guide's database analogy is the one that stuck: DP replicates the whole database plus indexes plus
+The database analogy is the one that stuck with me: DP replicates the whole database plus indexes plus
 transaction log on every worker; ZeRO partitions the metadata (optimizer), then the change log (gradients), then
 the primary data (parameters).
 
@@ -113,13 +112,13 @@ What I took from the bars, beyond the headline ratios:
   with no extra communication. This is why ZeRO-1 is the "always on" stage.
 * **ZeRO-2's gradient bar isn't Ψ/N.** At the peak, one layer's full gradient bucket exists while it waits to be
   reduce-scattered. Peak = persistent + largest bucket. That is why bucket size is a tuning knob and not
-  "as small as possible" (the guide's correction #4).
+  "as small as possible".
 * **ZeRO-3's `temp` bar is one gathered layer.** Peak ≈ 16Ψ/N + the largest layer's weights (+ its gradient
   bucket in backward). ZeRO-3's memory is bounded by the largest *layer*, not the model — which is why
   extremely wide layers still need tensor parallelism.
 * **Activations are untouched.** Identical in all four bars. ZeRO shards model *state*; activations scale with
   micro-batch × sequence × width × depth and need other tools (activation checkpointing, sequence parallelism).
-  The guide's correction #1 — batch size does *not* multiply model copies — is visible here: only the red sliver moves
+  A common misconception — that batch size multiplies model copies — is debunked here: only the red sliver moves
   with batch size.
 
 The within-step timeline of rank 0 shows the choreography that the peaks hide: ZeRO-2's sawtooth as each layer's
@@ -153,7 +152,7 @@ bucket is created, reduced and freed during backward; ZeRO-3's gather/release sp
   de-duplicated — DP runs Adam on all Ψ on every rank, ZeRO on Ψ/N — which showed up as DP having ~3× more thread
   compute time than the ZeRO stages.
 * **On modelled H100-class hardware the toy is ~100% communication-bound** (compute 0.002 ms, comm 6–10 ms). A
-  model that fits on one GPU should not be sharded across 32; the guide's "faster GPUs make networking look worse"
+  model that fits on one GPU should not be sharded across 32; "faster GPUs make networking look worse",
   taken to the limit.
 * **A synchronous step runs at the pace of its slowest rank.** Injecting a 1 s delay into rank 17's forward pass
   added ~0.8–1.0 s to every rank's step: 31 virtual GPUs idled waiting for one. Every collective is a barrier.
@@ -174,7 +173,7 @@ The toy proves the simulator matches the formulas; the formulas then extrapolate
 
 ![scaling](figures/memory_scaling_7b_405b.png)
 
-So the guide's rule — *choose the lowest sharding stage that fits with a safety margin* — gives: ZeRO-1 for
+So the practical rule — *choose the lowest sharding stage that fits with a safety margin* — gives: ZeRO-1 for
 7B/13B, ZeRO-3 for 70B, and 405B needs more GPUs plus other parallelism dimensions (tensor/pipeline/expert).
 
 And the cost side, for 7B on 32 GPUs with the ring crossing nodes at 50 GB/s:
@@ -193,16 +192,16 @@ shrinks it. ZeRO-3's 1.5× is a small tax when communication is hidden and a lar
 ## 5. How this maps to what real labs run
 
 * **DeepSpeed ZeRO** stages 1/2/3 are exactly the four trainers here, plus ZeRO-Offload / ZeRO-Infinity, which
-  push optimizer state or parameters to CPU RAM / NVMe when even ZeRO-3 doesn't fit. The guide's correction #7
-  applies: offload is a capacity/throughput trade-off, not a taboo.
+  push optimizer state or parameters to CPU RAM / NVMe when even ZeRO-3 doesn't fit. Offload is a
+  capacity/throughput trade-off, not a taboo.
 * **PyTorch FSDP / FSDP2** is ZeRO-3 as a native PyTorch wrapper (`FULL_SHARD` ≈ ZeRO-3, `SHARD_GRAD_OP` ≈ ZeRO-2).
   Its **`HYBRID_SHARD` (HSDP)** mode is the topology lesson made concrete: ZeRO-3 *inside* each node, where the 3Ψ
   of all-gathers ride the 450 GB/s NVSwitch, and plain DP all-reduce *across* nodes over the slow link. Map the
   heaviest collective to the fastest physical link.
 * **Frontier runs combine dimensions.** Llama-3 405B (per Meta's report, ~16k H100s) used tensor parallelism
   inside a node, pipeline parallelism across stages, context parallelism for long sequences, and FSDP across the
-  data-parallel dimension. Mixture-of-experts adds expert parallelism. The guide's warning holds: ZeRO-3 and pipeline
-  parallelism both "split things across GPUs" but ZeRO-3 shards *ownership of state* within a DP group, while
+  data-parallel dimension. Mixture-of-experts adds expert parallelism. A distinction worth keeping sharp: ZeRO-3 and
+  pipeline parallelism both "split things across GPUs" but ZeRO-3 shards *ownership of state* within a DP group, while
   pipeline shards *execution*.
 
 What the simulator deliberately leaves out — and where the real engineering lives:
@@ -218,7 +217,7 @@ What the simulator deliberately leaves out — and where the real engineering li
 
 ## 6. The Principal-Engineer questions, answered by the simulation
 
-| question (from the guide) | what I can now say |
+| question | what I can now say |
 |---|---|
 | **Capacity** — what must live on GPU at peak? | 16 bytes/param in DP; the optimizer is 12 of them. ZeRO-1 alone gives 3.7× at N=32. ZeRO-3 peak ≈ 16Ψ/N + largest layer. Activations are not touched by any stage. |
 | **Topology** — what crosses node boundaries? | Every collective in a 32-rank ring crosses nodes and runs at inter-node speed. HSDP exists to put the 3Ψ traffic on the fast link. |
@@ -245,4 +244,3 @@ What the simulator deliberately leaves out — and where the real engineering li
 * PyTorch FSDP / FSDP2 documentation; DeepSpeed ZeRO documentation
 * Korthikanti et al. — *Reducing Activation Recomputation in Large Transformer Models* (2022) (activation estimate)
 * Meta — *The Llama 3 Herd of Models* (2024) (4D parallelism at scale)
-* ERA V5 session guide — *Distributed Training, GPU Memory & ZeRO: a practical summary for a non-ML Principal Engineer*
