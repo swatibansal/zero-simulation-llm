@@ -5,8 +5,9 @@
 > The result reproduces the ZeRO paper's memory and communication formulas exactly, and the weights after
 > every step are **bitwise identical** across all four strategies.
 
+**Site:** [swatibansal.github.io/zero-simulation-llm](https://swatibansal.github.io/zero-simulation-llm/) (the whole lab as one page: code, outputs, plots) ·
 **Notebook:** [`zero_sim_demo.ipynb`](zero_sim_demo.ipynb) (executed, with all outputs and plots) ·
-**Library:** [`zero_sim/`](zero_sim) · **Tests:** [`tests/`](tests) (16 tests encode the claims below)
+**Library:** [`zero_sim/`](zero_sim) · **Tests:** [`tests/`](tests) (tests encode the claims below)
 
 ```bash
 pip install -r requirements.txt
@@ -234,6 +235,9 @@ What the simulator deliberately leaves out — and where the real engineering li
 ├── run_demo.py                CLI: prints the memory / comm table for all stages
 ├── zero_sim/                  the simulator (see §1)
 ├── tests/test_zero_sim.py     16 tests: collectives, bitwise equivalence, paper formulas, memory ladder, 1.5× comm
+├── tests/test_build_site.py   4 tests: the generated site mirrors the executed notebook
+├── tools/build_site.py        generates docs/index.html from the notebook
+├── docs/index.html            the one-page site served by GitHub Pages
 ├── figures/                   plots exported from the notebook
 └── requirements.txt           numpy, matplotlib, threadpoolctl (+ pytest, jupyter to run)
 ```
