@@ -29,8 +29,10 @@ zero_sim/trainers.py   DataParallelTrainer → ZeRO1Trainer → ZeRO2Trainer →
 zero_sim/analytic.py   closed-form ZeRO memory / comm formulas, used to cross-check the simulator
 zero_sim_demo.ipynb    executed notebook (outputs committed on purpose — it is the main artifact)
 run_demo.py            CLI summary table
-tests/                 16 tests, ~2 s
+tests/                 20 tests, ~2 s (simulator invariants + site builder)
 figures/               PNGs exported from the notebook, referenced by README.md
+tools/build_site.py    generates docs/index.html (GitHub Pages showcase) from the notebook
+docs/index.html        generated single-page site; served by GitHub Pages from main:/docs
 ```
 
 ## Commands
@@ -40,6 +42,7 @@ pip install -r requirements.txt
 python -m pytest tests -q                 # must stay green; ~2 s
 python run_demo.py --steps 2              # quick end-to-end sanity table
 jupyter nbconvert --to notebook --execute --inplace zero_sim_demo.ipynb   # ~1 min; re-run after any code change
+python3 tools/build_site.py               # regenerate docs/index.html after the notebook changes
 ```
 
 The notebook was generated from a builder script that is **not** in the repo (it was not preserved).
