@@ -215,7 +215,7 @@ What the simulator deliberately leaves out — and where the real engineering li
 | nothing fails | checkpoint cadence, sharded checkpoints, restore *tests*, straggler detection, immutable configs |
 | fp16 stands in for bf16 | bf16 keeps fp32's exponent range, which is why it is the training default; fp8 needs per-tensor scaling recipes |
 
-## 6. The Principal-Engineer questions, answered by the simulation
+## 6. The questions that matter when you run this at scale, answered by the simulation
 
 | question | what I can now say |
 |---|---|
